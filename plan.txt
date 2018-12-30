@@ -1,0 +1,34 @@
+仿真器：
+	Base
+		SignalInterface.py --Signal SignalPower
+		OpticalInstrument:Span 类 Edfa 类 Laser 类 IQ 类
+
+		
+	Dsp.py:
+		发送端DSP:
+			QAM 符号映射
+			脉冲成型
+		接收端DSP：
+			匹配滤波
+			符号同步
+			CD 补偿
+			均衡算法
+			相位恢复算法
+			载波恢复算法
+	tools.py
+		画图：星座图，
+		频谱图，
+		眼图 :ok
+		光谱图
+	QoT.py
+		EVM 计算
+		SNR 计算
+		BER 计算
+		SNR 计算
+		OSNR 计算
+		ANC
+		PNC
+		GMI
+	可视化大业
+
+		
