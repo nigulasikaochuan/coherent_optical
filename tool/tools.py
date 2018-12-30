@@ -1,12 +1,16 @@
 import numpy as np
-import matplotlib.pyplot as plt
+
 import visdom
+import matplotlib
+
+matplotlib.use('TKAGG')
+import matplotlib.pyplot as plt  
 class Signal:
     pass
 def spectrum(x,Signal):
     pass
 
-def eyediagram(x, sps, eyenumber=2, head=10):
+def eyediagram(x, sps, eyenumber=2, head=10,vis=None):
     '''
 
     :param x: Signal object or numpy array
@@ -15,6 +19,8 @@ def eyediagram(x, sps, eyenumber=2, head=10):
     :param head: the number to cut at the beginning and the end of signal
     :return: None
     '''
+    if vis is None:
+        vis = visdom.Visdom(env = 'eye diagram')
     if isinstance(x, Signal):
         x = x.data_sample
     else:
@@ -50,7 +56,7 @@ def eyediagram(x, sps, eyenumber=2, head=10):
             plt.subplot(212)
             __plot_realeye(start_index, end_index, eyenumber, sps, y_iq[1,:].reshape(1,-1), plt)
 
-            plt.show()
+            vis.matplot(plt)
         else:
             plt.figure()
             plt.title('x_polarization')
@@ -58,7 +64,7 @@ def eyediagram(x, sps, eyenumber=2, head=10):
             plt.figure()
             plt.title('y_polarization')
             __plot_realeye(start_index, end_index, eyenumber, sps, x_ypol, plt)
-            plt.show()
+            vis.matplot(plt)
 
     else:
         print('one polarization')
@@ -73,12 +79,12 @@ def eyediagram(x, sps, eyenumber=2, head=10):
             plt.subplot(212)
             # plt.title('quaduarte phase')
             __plot_realeye(start_index, end_index, eyenumber, sps, sig_complex[1,:].reshape(1,-1), plt)
-            plt.show()
+            vis.matplot(plt)
 
         else:
             plt.figure()
             __plot_realeye(start_index, end_index, eyenumber, sps, sig, plt)
-            plt.show()
+            vis.matplot(plt)
 
 
 def __plot_realeye(start_index, end_index, eyenumber, sps, signal, plt_object):
@@ -113,16 +119,10 @@ def main():
     x = loadmat('test.mat',mat_dtype=True)['x']
 
     print(x)
-    y = np.array([x[0,:]+1j*np.real(x[0,:])],dtype=x.dtype)
-    eyediagram(x, 40,5, 30)
+    y = np.array([x[0,:]+1j*np.real(x[0,:])],dtype=np.complex)
+
+    eyediagram(np.array([y[0],y[0]]), 40,5, 30)
 
 
 if __name__ == '__main__':
-    # x = np.array([[1 + 1j, 1 + 2j, 1 + 3j], [2 + 2j, 2 + 3j, 3 + 4j]])
-    # y = np.array([np.real(x[0, :]), np.imag(x[0, :])])
-    pass
-    #
-    # plt.plot(y[0, :])
-    # plt.plot(y[1,:])
-    # plt.show()
-
+    main()
