@@ -28,6 +28,10 @@ class Signal(object):
         plt.title('y-pol')
         vis.matplot(plt)
 
+    @property
+    def fs(self):
+        return self.symbol * self.sps_in_fiber
+
     def avg_power(self):
         x_power = np.mean(np.abs(self.data_sample_infiber[0, :]) ** 2)
         y_power = np.mean(np.abs(self.data_sample_infiber[1, :]) ** 2)
@@ -48,6 +52,57 @@ class Signal(object):
             normal_signal_sample = normal_signal_sample[0, :] / np.mean(np.abs(normal_signal_sample[0, :]) ** 2)
 
             return normal_signal_sample
+
+    def from_numpy_array(self,sample_x,sample_y,mf=None,symbol_rate=None,sps=None,wdm_signal=False,center_freq = 193.1e12,spacing=50e9
+                         ,ch_number = 1,absolute_frequence = []):
+
+
+
+        if wdm_signal:
+            assert ch_number > 1
+            assert len(absolute_frequence) > 0
+            if symbol_rate is None:
+                symbol_rate = 35e9
+                print("Warning: Symbol rate is set to 35GBAUD for each channel")
+
+            if isinstance(symbol_rate,list):
+                print('each channel have different rate')
+
+            else:
+                print('each channel have same rate')
+
+            if isinstance(mf,list):
+                print('each channel have different mf')
+            else:
+                print('each channel have the same mf')
+
+            config_parameter = dict(center_freq = center_freq,spacing = spacing,mf = mf, symbol_rate=symbol_rate,ch_number=ch_number,
+                                    absolute_frequence = absolute_frequence)
+
+            return WdmSignal(sample_x,sample_y,**config_parameter)
+        else:
+
+            if mf in ['qpsk','16qam','32qam','64qam','8qam']:
+                pass
+
+
+class WdmSignal(Signal):
+
+    def __init__(self,sample_x,sample_y,**kwargs):
+        super().__init__()
+        self.sample_x = sample_x
+        self.sample_y = sample_y
+
+        self.center_freq = kwargs['center_freq']
+        self.spacing = kwargs['spacing']
+        self.mf = kwargs['mf']
+        self.symbol_rate = kwargs['symbol_rate']
+        self.absolute_freq = kwargs['absolute_frequence']
+        self.ch_number = kwargs['ch_number']
+
+
+
+
 class QamSignal(Signal):
 
     def __init__(self, symbol_rate, mf, signal_power, symbol_length, sps):
@@ -72,9 +127,7 @@ class QamSignal(Signal):
         self.lamb = None
         self.init(order)
 
-    @property
-    def fs(self):
-        return self.symbol * self.sps_in_fiber
+
 
     def init(self, order):
 

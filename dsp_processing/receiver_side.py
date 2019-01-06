@@ -118,7 +118,7 @@ class Lms_pll(object):
         signal_outx = np.zeros((1, int(len(signal_xsample) / 2)), dtype=np.complex)
         signal_outy = np.zeros((1, int(len(signal_xsample) / 2)), dtype=np.complex)
 
-        for index in range(self.ntaps, len(signal_xsample), 2):
+        for index in range(self.ntaps, len(signal_xsample)+1, 2):
             xx = signal_xsample[index - self.ntaps: index]
             yy = signal_ysample[index - self.ntaps: index]
 
@@ -200,7 +200,7 @@ class Lms_pll(object):
             plt.plot(hyys, 'k-', label='hyy')
             plt.plot(hyxs, 'm-', label='hyx')
             plt.legend()
-            # plt.show()
+            plt.show()
             # plt.plot()
 
             # plt.subplot(223)
@@ -215,12 +215,12 @@ class Lms_pll(object):
             # plt.ylabel('quad-phase')
             # plt.plot(np.real(signal_outy[0, :]), np.imag(signal_outy[0, :]),marker='o')
 
-            if self.vis:
-                self.vis.matplot(plt)
-            else:
-                import visdom
-                self.vis = visdom.Visdom(env='lms_pll')
-                self.vis.matplot(plt)
+            # if self.vis:
+            #     self.vis.matplot(plt)
+            # else:
+            #     import visdom
+            #     self.vis = visdom.Visdom(env='lms_pll')
+            #     self.vis.matplot(plt)
 
         return signal_outx, signal_outy
 
