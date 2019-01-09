@@ -240,7 +240,7 @@ def main():
     after_sync_y = syncsignal(y[1, :], x[1, :], 2)[0]
 
     after_sync = np.array([after_sync_x, after_sync_y])
-
+    # after_sync = np.array([y[0], y[1]])
     class signal:
         pass
 
