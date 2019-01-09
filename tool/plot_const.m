@@ -1,4 +1,4 @@
- function plotConstellation(srx)
+function plotConstellation(srx)
 
             colors;
             scatplot(real(srx),imag(srx),'voronoi');

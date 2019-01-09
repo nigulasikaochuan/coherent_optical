@@ -6,16 +6,16 @@ function out = scatplot(x,y,method,radius,N,n,po,ms)
 %   out = scatplot(x,y,method)
 %
 % DESCRIPTION:
-%   Draws a scatter plot with a colorscale
-%   representing the data density computed
+%   Draws a scatter plot with a colorscale 
+%   representing the data density computed 
 %   using three methods
 %
 % INPUT VARIABLES:
 %   x,y - are the data points
 %   method - is the method used to calculate data densities:
-%       'circles' - uses circles with a determined area
+%       'circles' - uses circles with a determined area 
 %               centered at each data point
-%       'squares' - uses squares with a determined area
+%       'squares' - uses squares with a determined area 
 %               centered at each data point
 %       'voronoi' - uses voronoi cells to determin data densities
 %               default method is 'voronoi'
@@ -23,7 +23,7 @@ function out = scatplot(x,y,method,radius,N,n,po,ms)
 %       used to calculate the data densities if
 %       (Note: only used in methods 'circles' and 'squares'
 %           default radius is sqrt((range(x)/30)^2 + (range(y)/30)^2)
-%   N - is the size of the square mesh (N x N) used to
+%   N - is the size of the square mesh (N x N) used to  
 %       filter and calculate contours
 %       default is 100
 %   n - is the number of coeficients used in the 2-D
@@ -47,7 +47,7 @@ function out = scatplot(x,y,method,radius,N,n,po,ms)
 %       ddf - filtered data densities at (x,y)
 %       radius - area used in 'circles' and 'squares'
 %               methods to calculate densities
-%       xi - x coordenates for zi matrix
+%       xi - x coordenates for zi matrix 
 %       yi - y coordenates for zi matrix
 %       zi - unfiltered data densities at (xi,yi)
 %       zif - filtered data densities at (xi,yi)
@@ -73,7 +73,7 @@ end
 if nargin<4 | isempty(n)
     n = 5; %number of filter coefficients
 end
-if nargin<5 | isempty(radius)
+if nargin<5 | isempty(radius) 
     radius = sqrt(((max(x)-min(x))/30)^2 + ((max(y)-min(y))/30)^2);
 end
 if nargin<6 | isempty(po)
@@ -132,7 +132,7 @@ switch po
         end %if
         hs = gsp(x,y,dd,ms);
         out.hs = hs;
-        colorbar
+        colorbar    
 end %switch
 %------Relocate variables and place NaN's ----------
 dd(idat) = dd;
@@ -194,12 +194,12 @@ switch method %Calculate Data Density
         area = pi*r^2;
         dd = dd/area;
     case 'vo'  %----- Using voronoi cells ------
-        [v,c] = voronoin([x,y]);
-        for k=1:length(c)
-            %If at least one of the indices is 1,
+        [v,c] = voronoin([x,y]);     
+        for k=1:length(c) 
+            %If at least one of the indices is 1, 
             %then it is an open region, its area
             %is infinity and the data density is 0
-            if all(c{k}>1)
+            if all(c{k}>1)   
                 a = polyarea(v(c{k},1),v(c{k},2));
                 dd(k) = 1/a;
             end %if
@@ -213,7 +213,7 @@ map = colormap;
 ind = fix((c-min(c))/(max(c)-min(c))*(size(map,1)-1))+1;
 h = [];
 %much more efficient than matlab's scatter plot
-for k=1:size(map,1)
+for k=1:size(map,1) 
     if any(ind==k)
         h(end+1) = line('Xdata',x(ind==k),'Ydata',y(ind==k), ...
             'LineStyle','none','Color',map(k,:), ...
@@ -221,6 +221,6 @@ for k=1:size(map,1)
     end
 end
 if nargout==1
-    varargout{1} = h;
+    varargout{1} = h; 
 end
 return
