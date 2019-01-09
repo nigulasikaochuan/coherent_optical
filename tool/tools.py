@@ -94,27 +94,10 @@ class Scatterplot(object):
         self.__scatterplot(x, y)
 
     def __scatterplot(self, x, y):
-
-
-        x = matlab.double(x.tolist(),is_complex=True)
-        y = matlab.double(y.tolist(),is_complex=True)
-        eng.plotConstellation(x,nargout=0)
-        eng.plotConstellation(y,nargout=0)
-
-        # eng.colors(nargout=0)
+        pass
 
 
 
-    @staticmethod
-    def polygon_area(corners):
-        n = len(list(corners))
-        area = 0.0
-        for i in range(n):
-            j = (i + 1) % n
-            area += corners[i][0] * corners[j][1]
-            area -= corners[j][0] * corners[i][1]
-        area = abs(area) / 2.0
-        return area
 
 
 def eyediagram(x, sps, eyenumber=2, head=10, vis=None):
@@ -206,9 +189,6 @@ def __plot_realeye(start_index, end_index, eyenumber, sps, signal, plt_object):
 def evaldelay(signal):
     pass
 
-
-def plot_optical_filed(signal):
-    pass
 
 
 def ber2q(ber):
