@@ -1,7 +1,8 @@
 import numpy as np
-from scipy.signal import welch
+from scipy.signal import welch, convolve2d
 import visdom
 import matplotlib
+from shapely.geometry import Polygon
 
 matplotlib.use('TKAGG')
 import matplotlib.pyplot as plt
@@ -80,24 +81,107 @@ class SpectrumAnalyzer(object):
 
 
 class Scatterplot(object):
+    is_plot = False
+    plot_env = 'scatter plot'
+    @staticmethod
+    def scatterplot(xpol):
+        xpol = np.atleast_2d(xpol)
+        xreal = np.real(xpol[0,:])
+        ximag = np.imag(xpol[0,:])
+        dd = Scatterplot.__density(xreal, ximag)
+        xi, yi = np.meshgrid(np.linspace(np.min(xreal), np.max(xreal), 100), np.linspace(np.min(ximag), np.max(ximag), 100))
+        zi = griddata(np.column_stack((xreal, ximag)), dd.reshape(-1), (xi, yi), fill_value=0)
+        coef = np.ones(5) / 5
+        coef.shape = -1, 1
+        zif = convolve2d(zi, coef @ coef.T, mode='same')
+        ddf = griddata((xi.ravel(), yi.ravel()), zif.ravel(), (xreal, ximag))
+        fig = Scatterplot.__gsp(xreal, ximag, ddf, 4)
+        return fig
+    @staticmethod
+    def __density(x, y):
+        points = np.column_stack((x, y))
+        voro_obj = Voronoi(points, qhull_options='Qbb')
 
-    def __call__(self, signal):
-        if isinstance(signal, SignalInterface.Signal):
-            x = signal.data_sample[0]
-            y = signal.data_sample[1]
+        vertices = voro_obj.vertices
+        regions = voro_obj.regions
+        region_index = voro_obj.point_region
+        dd = np.zeros((len(x), 1))
+        cnt = 0
+        for index in region_index:
+            if len(regions[index]) == 0:
+                continue
+            elif -1 in regions[index]:
+                cnt += 1
+                continue
+            else:
+                k = regions[index]
+
+                coords = np.column_stack((vertices[k, 0], vertices[k, 1])).tolist()
+                polgyon = Polygon(coords)
+                area = polgyon.area
+                dd[cnt, 0] = 1 / area
+                cnt += 1
+        return dd
+
+    @staticmethod
+    def __gsp(x, y, dd, ms):
+        from scipy.io import loadmat
+        import os
+        path = os.path.dirname(os.path.abspath(__file__))
+        colormap = loadmat(os.path.join(path, 'color.mat'))['map']
+        color_index = np.floor(((dd - np.min(dd)) / (np.max(dd) - np.min(dd)) * (colormap.shape[0] - 1)))
+        fig = go.Figure()
+        if Scatterplot.is_plot:
+            viz = visdom.Visdom(env=Scatterplot.plot_env)
+
+        traces = []
+        layout = go.Layout(title='scatter plot', showlegend=False,xaxis=dict(title='In phase'),yaxis=dict(title='Q Phase'))
+        for k in range(colormap.shape[0]):
+            if np.any(color_index == k):
+                xdata = x[color_index == k]
+                ydata = y[color_index == k]
+                color = (colormap[k, :]).tolist()
+                color_string = ''
+                for co in color:
+                    color_string += str(co) + ','
+                color_string = color_string[:-1]
+                color_string = f'rgb({color_string})'
+                size = [4] * len(xdata)
+                traces.append(go.Scattergl(x=xdata, y=ydata, mode='lines',
+                                           marker=dict(size=size, color=color_string, colorscale=[[0.0, '#3e26a8'],
+                                                                                                  [0.1111111111111111,
+                                                                                                   '#4741e5'],
+                                                                                                  [0.2222222222222222,
+                                                                                                   '#4269fe'],
+                                                                                                  [0.3333333333333333,
+                                                                                                   '#2e87f7'],
+                                                                                                  [0.4444444444444444,
+                                                                                                   '#1ca9df'],
+                                                                                                  [0.5555555555555556,
+                                                                                                   '#19bfb6'],
+                                                                                                  [0.6666666666666666,
+                                                                                                   '#4acb84'],
+                                                                                                  [0.7777777777777778,
+                                                                                                   '#9dc943'],
+                                                                                                  [0.8888888888888888,
+                                                                                                   '#f0ba36'],
+                                                                                                  [0.9, "#fad62d"],
+                                                                                                  [1.0, '#f9fb15']]))
+                              )
+
+                if k == 0:
+                    traces[0]['marker'].update(colorbar=dict(title='density'))
+
+                fig = go.Figure(data=traces, layout=layout)
+
+                if Scatterplot.is_plot:
+                    if k == 0:
+                        win = viz.plotlyplot(fig)
+                    else:
+                        viz.plotlyplot(fig, win=win)
 
         else:
-            signal = np.atleast_2d(signal)
-            x = signal[0]
-            y = signal[1]
-
-        self.__scatterplot(x, y)
-
-    def __scatterplot(self, x, y):
-        pass
-
-
-
+            return fig
 
 
 def eyediagram(x, sps, eyenumber=2, head=10, vis=None):
@@ -190,7 +274,6 @@ def evaldelay(signal):
     pass
 
 
-
 def ber2q(ber):
     pass
 
@@ -198,17 +281,12 @@ def ber2q(ber):
 def main():
     from scipy.io import loadmat
 
-    x = loadmat('/Volumes/D/zaxiang/mysimulation/gitcode/dsp_processing/matlab.mat')['rxSamples']
-    y = x[0]
-    y = dowmsample(y, 2)
-    y2 = x[1]
-    y2 = dowmsample(y2, 2)
-    # spectrum = SpectrumAnalyzer()
-    # spectrum(x, fs=35e9 * 2)
-
-    scatter = Scatterplot()
-    scatter(np.array([y, y2]))
-
+    x = loadmat('./Shaped_64QAM.mat')['rxSignal']
+    x.shape = 1,-1
+    Scatterplot.is_plot=False
+    fig = Scatterplot.scatterplot(x)
+    viz = visdom.Visdom(env = 'plot_env')
+    viz.plotlyplot(fig)
 
 def dowmsample(x, sps):
     return x[0:len(x):sps]

@@ -6,7 +6,7 @@ import visdom
 import numpy as np
 from scipy.signal import convolve2d
 
-
+from shapely.geometry import Polygon
 def polyarea(x, y):
     return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
@@ -28,7 +28,10 @@ def density(x, y):
             continue
         else:
             k = regions[index]
-            area = polyarea(vertices[k, 0], vertices[k, 1])
+
+            coords = np.column_stack((vertices[k,0],vertices[k,1])).tolist()
+            polgyon = Polygon(coords)
+            area = polgyon.area
             dd[cnt, 0] = 1 / area
             cnt += 1
     return dd
