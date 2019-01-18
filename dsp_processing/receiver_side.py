@@ -1,46 +1,124 @@
 import numpy as np
+from numpy.fft import fftfreq
+from scipy.fftpack import fft, ifft
 from scipy.signal import correlate
 
 
-def cdcomp(signal):
-    pass
+class DispersionCompensation(object):
+    '''
+        using __call__ to comp cd
 
+        if input is ndarray, then a new array will be returned
 
-def cmaadaptive(signal):
-    pass
-
-
-def coherent_mix(signal):
-    pass
-
-
-def syncsignal(symbol_tx, sample_rx, sps):
+        if input is signal object,because reference is passed,the data behind it will change too. e.g. inplace
     '''
 
-    :param symbol_tx: 发送符号
-    :param sample_rx: 接收符号，会相对于发送符号而言存在滞后
-    :param sps: samples per symbol
-    :return: 收端符号移位之后的结果
+    def __call__(self, signal, span, fs=None):
+        if isinstance(signal, np.ndarray):
+            assert fs is not None
+            temp = np.zeros_like(signal)
+            freq_vector = fftfreq(signal.shape[1], 1 / fs)
+            for i in range(signal.shape[0]):
+                temp[i,:] = self.__comp(freq_vector,signal,span)
+            return temp
+        else:
+            freq_vector = fftfreq(signal.data_sample.shape[1],1/signal.fs)
+            for i in range(signal.data_sample.shape[0]):
+                signal.data_sample[i,:] = self.__comp(freq_vector,  signal.data_sample[i,:],span)
+
+
+
+
+    def __comp(self, freq_vector, sample, span):
+        '''
+
+        :param freq_vector: freq vecotr
+        :param sample: [1,n] 2d-array
+        :param span: Span object
+        :return:
+
+        no change input array
+        '''
+        freq_omeg = 2 * np.pi * freq_vector
+        sample = np.atleast_2d(sample)
+        beta2 = -span.beta2
+        disper = (1j / 2) * beta2 * freq_omeg ** 2 * span.length
+        fourier_transform = fft(sample[0,:])*disper
+        after_comp = ifft(fourier_transform)
+
+        return after_comp
+
+
+
+class CMA(object):
+    def __init__(self):
+        pass
+
+
+class CoherentFrontEnd(object):
+
+    def __init__(self):
+        pass
+
+
+
+class SuperScalar(object):
+
+    def __init__(self):
+        pass
+
+
+
+class SyncSignal(object):
     '''
-    symbol_tx = np.atleast_2d(symbol_tx)[0]
-    sample_rx = np.atleast_2d(sample_rx)[0]
-    res = correlate(sample_rx[::sps], symbol_tx)
+            using __call__ to comp cd
 
-    index = np.argmax(np.abs(res))
+            if input is ndarray, then a new array will be returned
 
-    out = np.roll(sample_rx, sps * (-index - 1 + symbol_tx.shape[0]))
-    return np.atleast_2d(out)
-
-
-def lms_pll(signal_in, ntaps, training_symbol, constellation=None):
+            if input is signal object,because reference is passed,the data behind it will change too. e.g. inplace
     '''
 
-    :param signal_in: Signal object
-    :param training_symbol: symbol for training
-    :param constellation: if is None, qammod and qamdemod will be used ,otherwise decision will be used
-    :return:
-    '''
-    pass
+    def __call__(self, signal, txsignal, sps=None):
+        '''
+
+        :param signal: rx ndarray samples or rx signal object
+        :param txsignal: tx signal object
+        :param sps: sps in receive, often 2
+        :return:
+        '''
+        if isinstance(signal, np.ndarray):
+            assert sps is not None
+            signal = np.atleast_2d(signal)
+            temp = np.zeros_like(signal)
+            for i in range(signal.shape[0]):
+                temp[i, :] = SyncSignal.syncsignal(txsignal.symbol[i, :], signal[i, :], sps)
+            return temp
+        else:
+            for i in range(signal.data_sample[0]):
+                signal.data_sample[i, :] = SyncSignal.syncsignal(txsignal.symbol[i, :], signal.data_sample[i, :],
+                                                                 signal.sps)
+
+    @staticmethod
+    def syncsignal(symbol_tx, sample_rx, sps):
+        '''
+
+        :param symbol_tx: 发送符号
+        :param sample_rx: 接收符号，会相对于发送符号而言存在滞后
+        :param sps: samples per symbol
+        :return: 收端符号移位之后的结果
+
+        # 不会改变原信号
+
+        '''
+        symbol_tx = np.atleast_2d(symbol_tx)[0]
+        sample_rx = np.atleast_2d(sample_rx)[0]
+
+        res = correlate(sample_rx[::sps], symbol_tx)
+
+        index = np.argmax(np.abs(res))
+
+        out = np.roll(sample_rx, sps * (-index - 1 + symbol_tx.shape[0]))
+        return np.atleast_2d(out)
 
 
 class Lms_pll(object):
@@ -118,7 +196,7 @@ class Lms_pll(object):
         signal_outx = np.zeros((1, int(len(signal_xsample) / 2)), dtype=np.complex)
         signal_outy = np.zeros((1, int(len(signal_xsample) / 2)), dtype=np.complex)
 
-        for index in range(self.ntaps, len(signal_xsample)+1, 2):
+        for index in range(self.ntaps, len(signal_xsample) + 1, 2):
             xx = signal_xsample[index - self.ntaps: index]
             yy = signal_ysample[index - self.ntaps: index]
 
@@ -201,28 +279,32 @@ class Lms_pll(object):
             plt.plot(hyxs, 'm-', label='hyx')
             plt.legend()
             plt.show()
-            # plt.plot()
-
-            # plt.subplot(223)
-            # plt.title('x-title')
-            # plt.xlabel('in-phase')
-            # plt.ylabel('quad-phase')
-            # plt.plot(np.real(signal_outx[0,:]),np.imag(signal_outx[0,:]),marker='o')
-            #
-            # plt.subplot(224)
-            # plt.title('y-title')
-            # plt.xlabel('in-phase')
-            # plt.ylabel('quad-phase')
-            # plt.plot(np.real(signal_outy[0, :]), np.imag(signal_outy[0, :]),marker='o')
-
-            # if self.vis:
-            #     self.vis.matplot(plt)
-            # else:
-            #     import visdom
-            #     self.vis = visdom.Visdom(env='lms_pll')
-            #     self.vis.matplot(plt)
 
         return signal_outx, signal_outy
+
+
+def rotate_nliphase(rx_signal,txsignal_signal):
+    '''
+
+    :param rx_signal: rx ndarray 1sps
+    :param txsignal_signal: tx signal object
+    :return: None
+
+    inplace operation
+    '''
+    if isinstance(rx_signal,np.ndarray):
+        # at_least 是view
+        # ndarray 是可变对象，rx_signal 引用了外部对象，所以是inplace
+
+        rx_signal = np.atleast_2d(rx_signal)
+    else:
+        # rx_signal 重新引用自己的symbol,inplace 操作,所以是inplace
+        rx_signal = rx_signal.symbol
+    refer_symbol = np.atleast_2d(txsignal_signal.symbol)
+
+
+    pass
+    ### add code to rotate phase shift symbol
 
 
 def main():
@@ -235,11 +317,12 @@ def main():
     y = loadmat('txSymbols.mat')['txSymbols']
 
     # ntaps, filter_choose, is_training, lr_ts=0.01, lr_td=0.01
-
-    after_sync_x = syncsignal(y[0, :], x[0, :], 2)[0]
-    after_sync_y = syncsignal(y[1, :], x[1, :], 2)[0]
+    timeSync = SyncSignal()
+    after_sync_x = timeSync(y[0, :], x[0, :], 2)[0]
+    after_sync_y = timeSync(y[1, :], x[1, :], 2)[0]
 
     after_sync = np.array([after_sync_x, after_sync_y])
+
     # after_sync = np.array([y[0], y[1]])
     class signal:
         pass

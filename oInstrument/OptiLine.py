@@ -16,7 +16,9 @@ class Brf:
 
 class Edfa:
 
+
     def __init__(self, gain_db, nf, is_ase=True, mode='ConstantGain', expected_power=0):
+
         self.gain_db = gain_db
         self.nf = nf
         self.is_ase = is_ase
@@ -42,6 +44,7 @@ class Edfa:
             noise = self.one_ase(signal) * signal.fs
         else:
             noise = 0
+
         if self.mode == 'ConstantGain':
             signal.data_sample = np.sqrt(self.gain_lin) * signal.data_sample + noise
             return

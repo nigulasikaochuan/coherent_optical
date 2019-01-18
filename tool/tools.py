@@ -83,13 +83,21 @@ class SpectrumAnalyzer(object):
 class Scatterplot(object):
     is_plot = False
     plot_env = 'scatter plot'
+
+    def __init__(self,viz=None):
+        if viz is None:
+            Scatterplot.viz = visdom.Visdom(env=Scatterplot.plot_env)
+        else:
+            Scatterplot.viz = viz
+
     @staticmethod
     def scatterplot(xpol):
         xpol = np.atleast_2d(xpol)
-        xreal = np.real(xpol[0,:])
-        ximag = np.imag(xpol[0,:])
+        xreal = np.real(xpol[0, :])
+        ximag = np.imag(xpol[0, :])
         dd = Scatterplot.__density(xreal, ximag)
-        xi, yi = np.meshgrid(np.linspace(np.min(xreal), np.max(xreal), 100), np.linspace(np.min(ximag), np.max(ximag), 100))
+        xi, yi = np.meshgrid(np.linspace(np.min(xreal), np.max(xreal), 100),
+                             np.linspace(np.min(ximag), np.max(ximag), 100))
         zi = griddata(np.column_stack((xreal, ximag)), dd.reshape(-1), (xi, yi), fill_value=0)
         coef = np.ones(5) / 5
         coef.shape = -1, 1
@@ -97,6 +105,7 @@ class Scatterplot(object):
         ddf = griddata((xi.ravel(), yi.ravel()), zif.ravel(), (xreal, ximag))
         fig = Scatterplot.__gsp(xreal, ximag, ddf, 4)
         return fig
+
     @staticmethod
     def __density(x, y):
         points = np.column_stack((x, y))
@@ -132,10 +141,11 @@ class Scatterplot(object):
         color_index = np.floor(((dd - np.min(dd)) / (np.max(dd) - np.min(dd)) * (colormap.shape[0] - 1)))
         fig = go.Figure()
         if Scatterplot.is_plot:
-            viz = visdom.Visdom(env=Scatterplot.plot_env)
+            viz = Scatterplot.viz
 
         traces = []
-        layout = go.Layout(title='scatter plot', showlegend=False,xaxis=dict(title='In phase'),yaxis=dict(title='Q Phase'))
+        layout = go.Layout(title='scatter plot', showlegend=False, xaxis=dict(title='In phase'),
+                           yaxis=dict(title='Q Phase'))
         for k in range(colormap.shape[0]):
             if np.any(color_index == k):
                 xdata = x[color_index == k]
@@ -282,11 +292,12 @@ def main():
     from scipy.io import loadmat
 
     x = loadmat('./Shaped_64QAM.mat')['rxSignal']
-    x.shape = 1,-1
-    Scatterplot.is_plot=False
+    x.shape = 1, -1
+    Scatterplot.is_plot = False
     fig = Scatterplot.scatterplot(x)
-    viz = visdom.Visdom(env = 'plot_env')
+    viz = visdom.Visdom(env='plot_env')
     viz.plotlyplot(fig)
+
 
 def dowmsample(x, sps):
     return x[0:len(x):sps]
