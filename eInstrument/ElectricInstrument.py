@@ -1,32 +1,12 @@
-'''
-
-        ### 插零
-        symbol_x = self.symbol[0, :]
-        symbol_y = self.symbol[1, :]
-
-        symbol_x = self.upsample(symbol_x)
-        symbol_y = self.upsample(symbol_y)
-        self.rrc_filter_tap = self.rrc_filter(0.02, self.sps_in_fiber, 1024)
-
-        symbol_x = fftconvolve(symbol_x[0], self.rrc_filter_tap[0])
-        symbol_y = fftconvolve(symbol_y[0], self.rrc_filter_tap[0])
-
-        self.data_sample_infiber = np.array([symbol_x, symbol_y])
-        self.data_sample = self.data_sample_infiber
-
-'''
 from Base import SignalInterface
 from scipy.signal import convolve
 from scipy.signal import resample
-
 import numpy as np
-
 
 
 class ADC(object):
 
-    def __init__(self,sps):
-
+    def __init__(self, sps):
         self.sps = sps
 
     def __call__(self, signal):
@@ -35,14 +15,12 @@ class ADC(object):
 
 class DAC(object):
 
-    def __init__(self,sps_infiber):
-        self.sps_infiber = sps_infiber
-
     def __call__(self, signal):
-        N = self.sps_infiber/self.signal.sps * self.signal.symbol_length
-        tempx = resample(signal.data_sample[0,:],N)
-        tempy = resample(signal.data_sample[1,:],N)
-        signal.data_sample = np.array([tempx,tempy])
+        sps_in_fiber = signal.sps_in_fiber
+        N = sps_in_fiber / signal.sps * signal.symbol_length
+        tempx = resample(signal.data_sample_in_fiber[0, :], N)
+        tempy = resample(signal.data_sample_in_fiber[1, :], N)
+        signal.data_sample_in_fiber = np.array([tempx, tempy])
 
 
 class PulseShaping(object):
@@ -56,9 +34,9 @@ class PulseShaping(object):
         self.number_of_sample = self.span * self.sps
         self.delay = self.span / 2 * self.sps
 
-        self.filter_tap = self.design_filter()
+        self.filter_tap = self.__design_filter()
 
-    def design_filter(self):
+    def __design_filter(self):
         if self.pulse_shaping == 'rrc':
             h = PulseShaping.rcosdesign(self.number_of_sample, self.alpha, 1, self.sps)
             return np.atleast_2d(h)
@@ -115,7 +93,7 @@ class PulseShaping(object):
 
         return h_rrc / np.sqrt(np.sum(h_rrc * h_rrc))
 
-    def rrcfilter(self,signal_interface):
+    def rrcfilter(self, signal_interface):
         '''
 
         :param signal_interface: signal object to be pulse shaping,because a reference of signal object is passed
@@ -124,29 +102,37 @@ class PulseShaping(object):
         '''
         print("---begin pulseshaping ---")
         # upsample by insert zeros
-        signal_interface.data_sample[0, :] = signal_interface.upsample(signal_interface.symbol[0, :],
-                                                                                signal_interface.sps)[0, :]
 
-        signal_interface.data_sample[1, :] = signal_interface.upsample(signal_interface.symbol[1, :],
-                                                                                 signal_interface.sps)[1, :]
+        for i in range(signal_interface.data_sample_in_fiber.shape[0]):
+
+            signal_interface.data_sample[i, :] = signal_interface.upsample(signal_interface.symbol[i, :],
+                                                                       signal_interface.sps)[i, :]
+
+        # signal_interface.data_sample[1, :] = signal_interface.upsample(signal_interface.symbol[1, :],
+        #                                                                signal_interface.sps)[1, :]
         # upsample finish
         # rrc filter
-        tempx = convolve(self.filter_tap[0, :], signal_interface.data_sample[0, :])
+        temp =[]
+        for i in range(signal_interface.data_sample_in_fiber.shape[0]):
+            temp.append(convolve(self.filter_tap[0, :], signal_interface.data_sample[i, :]))
 
-        tempy = convolve(self.filter_tap[0, :], signal_interface.data_sample[1, :])
-        temp_signal = np.array([tempx, tempy])
+        # tempy = convolve(self.filter_tap[0, :], signal_interface.data_sample[1, :])
+        # temp_signal = np.array([tempx, tempy])
+        temp_signal = np.array(temp)
         # compensate group delay
         temp_signal = np.roll(temp_signal, -int(self.delay), axis=1)
 
-        signal_interface.data_sample = temp_signal[:,:signal_interface.sps * signal_interface.symbol_length]
+        signal_interface.data_sample = temp_signal[:, :signal_interface.sps * signal_interface.symbol_length]
 
         print('rrc filter completed')
+
+    def __call__(self, signal):
+        self.rrcfilter(signal)
 
 
 class AWG(object):
 
-    def __init__(self, pulse_shaping_dict, signal_interface:SignalInterface.QamSignal):
-
+    def __init__(self, pulse_shaping_dict, signal_interface: SignalInterface.QamSignal):
         '''
 
         :param pulse_shaping_dict: pulse shaping parameters
@@ -158,14 +144,9 @@ class AWG(object):
 
         self.pulse_shaping_filter = PulseShaping(**pulse_shaping_dict)
 
-
     def __call__(self, *args, **kwargs):
-
         self.pulse_shaping_filter.rrcfilter(self.signal_interface)
 
 
-
-
-
 if __name__ == '__main__':
-    h = PulseShaping.rrcosfilter(32 * 4, 0.2, 1, 4)
+    h = PulseShaping.rcosdesign(32 * 4, 0.2, 1, 4)

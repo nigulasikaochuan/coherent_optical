@@ -86,3 +86,6 @@ class NonlinearFiber(LinearFiber):
 
     def __call__(self, signal):
         self.__inplace_prop(signal)
+
+    def prop(self,signal):
+        pass

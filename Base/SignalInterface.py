@@ -1,6 +1,8 @@
 import numpy as np
+from deprecated import deprecated
 from scipy.io import loadmat
 from scipy.signal import fftconvolve
+from scipy.constants import c
 import os
 import visdom
 
@@ -13,13 +15,15 @@ class Signal(object):
         '''
 
         :param kwargs: 包含单信道信号的各项参数，包括：
-            1. 符号速率 【GHz】
+            1. 符号速率 【Hz】
             2. 调制格式
             3. 符号长度
             4. 符号功率  【dbm】
             5. sps： 发端dsp的采样率
             6. sps_in_fiber: 光纤中采样率
             7. lam： 信号波长，单位为国际单位m
+
+        所有单位全部使用国际标准单位
 
         '''
         if isinstance(self, WdmSignal):
@@ -29,7 +33,7 @@ class Signal(object):
         self.mf = kwargs['mf']
         self.symbol_length = kwargs['symbol_length']
 
-        self.signal_power = kwargs['signal_power']
+        self.signal_power = None
 
         self.sps_in_fiber = kwargs['sps_in_fiber']
         self.sps = kwargs['sps']
@@ -38,6 +42,64 @@ class Signal(object):
         self.is_dp = True
         self.data_sample_in_fiber = None
 
+    def tonumpy(self):
+        '''
+
+        :return: reference to self.data_sample_in_fiber
+        if function not return a new ndarrya
+        change it outside will change the data_sample_in_fiber property of the object
+        '''
+        return self.data_sample_in_fiber
+
+    def __getitem__(self, index):
+        '''
+
+        :param index: Slice Object
+        :return: ndarray of the signal, change this ndarray will not change the object
+
+        '''
+        assert self.data_sample_in_fiber is not None
+
+        return self.data_sample_in_fiber[index]
+
+    def __setitem__(self, index, value):
+        '''
+
+        :param index: SLICE Object
+        :param value: the value that to be set
+        :return:
+        '''
+        if self.data_sample_in_fiber is None:
+            self.data_sample_in_fiber = np.atleast_2d(value)
+        else:
+
+           self.data_sample_in_fiber[index] = value
+
+
+    @staticmethod
+    def lamb2freq(lam):
+        '''
+
+        :param lam: wavelength [m]
+        :return: frequence [Hz]
+        '''
+        return c/lam
+
+    @staticmethod
+    def freq2lamb(freq):
+        '''
+
+        :param freq: frequence [Hz]
+        :return: lambda:[m]
+        '''
+        return c/freq
+
+
+    def measure_power_in_fiber(self):
+        sample_in_fiber = np.atleast_2d(self.data_sample_in_fiber)
+        signal_power = np.sum(np.mean(np.abs(sample_in_fiber) ** 2, axis=1))
+        return signal_power
+
     @property
     def fs(self):
         if self.sps is None:
@@ -45,29 +107,42 @@ class Signal(object):
         return self.symbol_rate * self.sps
 
     @property
-    def fs_infiber(self):
+    def fs_in_fiber(self):
         return self.symbol_rate * self.sps_in_fiber
 
+    @deprecated(version='0.1',reason='please use measure_power_in_fiber')
     def avg_power(self):
         x_power = np.mean(np.abs(self.data_sample_in_fiber[0, :]) ** 2)
         y_power = np.mean(np.abs(self.data_sample_in_fiber[1, :]) ** 2)
         return x_power + y_power
 
+
+
+    def _normalize_power(self):
+        '''
+            in place operation
+        :return:
+        '''
+        self.data_sample_in_fiber = self.normalize_power()
+
     def normalize_power(self):
         '''
 
+        new ndarray will be returned , the signal object itself is not changed
         :param signal:
         :return: ndarray and signal object will not be changed
+
         '''
         if self.data_sample_in_fiber.shape[0] == 2:
-            x_normal = self.data_sample_in_fiber[0, :] / np.mean(np.abs(self.data_sample_in_fiber[0, :]) ** 2)
-            y_normal = self.data_sample_in_fiber[1, :] / np.mean(np.abs(self.data_sample_in_fiber[1, :]) ** 2)
+            x_normal = self.data_sample_in_fiber[0,:] / np.sqrt(np.mean(np.abs(self.data_sample_in_fiber[0, :]) ** 2))
+            y_normal = self.data_sample_in_fiber[1, :] / np.sqrt(np.mean(np.abs(self.data_sample_in_fiber[1, :]) ** 2))
             return x_normal, y_normal
         else:
             normal_signal_sample = np.atleast_2d(self.data_sample_in_fiber)
-            normal_signal_sample = normal_signal_sample[0, :] / np.mean(np.abs(normal_signal_sample[0, :]) ** 2)
+            normal_signal_sample = normal_signal_sample[0, :] / np.sqrt(
+                np.mean(np.abs(normal_signal_sample[0, :]) ** 2))
 
-            return normal_signal_sample
+            return np.atleast_2d(normal_signal_sample)
 
     def from_numpy(self, **kwargs):
         if kwargs['is_wdm']:
@@ -144,11 +219,25 @@ class Signal(object):
         symbol_x.shape = 1, -1
         return symbol_x
 
+    def __str__(self):
+
+        string = f'\n\tSymbol rate:{self.symbol_rate/1e9}[Ghz]\n\tfs_in_fiber:{self.fs_in_fiber/1e9}[Ghz]\n\tsignal_power_in_fiber:{self.signal_power} [W]\n\tsignal WaveLength:{self.lamb*1e9}[nm] '
+
+        return string
+
+    def __repr__(self):
+
+        return self.__str__()
 
 class WdmSignal(object):
 
     def __init__(self, sample_x, sample_y=None, **kwargs):
+        '''
 
+        :param sample_x:
+        :param sample_y:
+        :param kwargs:
+        '''
         if kwargs['is_dp']:
             assert sample_y is not None
             self.data_sample = np.array([sample_x, sample_y])
@@ -167,7 +256,8 @@ class WdmSignal(object):
 
 class QamSignal(Signal):
 
-    def __init__(self, symbol_rate, mf, signal_power, symbol_length, sps, sps_in_fiber, is_dp = True,is_from_numpy=False):
+    def __init__(self, symbol_rate, mf, symbol_length, sps, sps_in_fiber, is_dp=True,
+                 is_from_numpy=False):
         '''
 
         :param symbol_rate: [hz]   符号速率
@@ -179,8 +269,8 @@ class QamSignal(Signal):
         '''
 
         super().__init__(
-            **dict(symbol_length=symbol_length, symbol_rate=symbol_rate, mf=mf, signal_power=signal_power, sps=sps,
-                   sps_in_fiber=sps_in_fiber,is_dp = is_dp)
+            **dict(symbol_length=symbol_length, symbol_rate=symbol_rate, mf=mf,  sps=sps,
+                   sps_in_fiber=sps_in_fiber, is_dp=is_dp)
         )
 
         if self.mf == 'qpsk':
@@ -226,14 +316,19 @@ def main():
     symbol_rate = 35e9
     mf = '16-qam'
     signal_power = 0
-    symbol_length = 2 ** 16
+    symbol_length = 5
     sps = 2
     sps_infiber = 4
 
-    parameter = dict(symbol_rate=symbol_rate, mf=mf, signal_power=signal_power, symbol_length=symbol_length, sps=sps,
+    parameter = dict(symbol_rate=symbol_rate, mf=mf,  symbol_length=symbol_length, sps=sps,
                      sps_in_fiber=sps_infiber)
 
     signal = QamSignal(**parameter)
+    signal[:] = np.array([1,2,3,4,5])
+    signal[0,:] = np.array([4,5,6,7,8])
+    # signal._normalize_power()
+    print(signal[0,:])
+    print(signal.measure_power_in_fiber())
     print("heiehi")
 
 

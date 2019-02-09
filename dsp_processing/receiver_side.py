@@ -2,8 +2,10 @@ import numpy as np
 from numpy.fft import fftfreq
 from scipy.fftpack import fft, ifft
 from scipy.signal import correlate
+from scipy.signal import lfilter
+from Base import SignalInterface
 
-
+from qamdata.mapDemap import decision
 class DispersionCompensation(object):
     '''
         using __call__ to comp cd
@@ -19,15 +21,12 @@ class DispersionCompensation(object):
             temp = np.zeros_like(signal)
             freq_vector = fftfreq(signal.shape[1], 1 / fs)
             for i in range(signal.shape[0]):
-                temp[i,:] = self.__comp(freq_vector,signal,span)
+                temp[i, :] = self.__comp(freq_vector, signal, span)
             return temp
         else:
-            freq_vector = fftfreq(signal.data_sample.shape[1],1/signal.fs)
+            freq_vector = fftfreq(signal.data_sample.shape[1], 1 / signal.fs)
             for i in range(signal.data_sample.shape[0]):
-                signal.data_sample[i,:] = self.__comp(freq_vector,  signal.data_sample[i,:],span)
-
-
-
+                signal.data_sample[i, :] = self.__comp(freq_vector, signal.data_sample[i, :], span)
 
     def __comp(self, freq_vector, sample, span):
         '''
@@ -43,11 +42,10 @@ class DispersionCompensation(object):
         sample = np.atleast_2d(sample)
         beta2 = -span.beta2
         disper = (1j / 2) * beta2 * freq_omeg ** 2 * span.length
-        fourier_transform = fft(sample[0,:])*disper
+        fourier_transform = fft(sample[0, :]) * disper
         after_comp = ifft(fourier_transform)
 
         return after_comp
-
 
 
 class CMA(object):
@@ -61,13 +59,100 @@ class CoherentFrontEnd(object):
         pass
 
 
-
 class SuperScalar(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, block_length=200, D=4, g=0.15,filter_N = 20):
+        '''
 
+        :param block_length:
+        :param D: for pll
+        :param g: for pll
+        '''
+        self.block_length = block_length
 
+        self.D = D
+        self.g = g
+        self.pll = PLL(self.D, self.g)
+        self.filter_N = filter_N
+
+    def __call__(self, rx_signal, tx_signal,constl):
+        symbol_rx = rx_signal.symbol
+        symbol_tx = tx_signal.symbol
+
+        assert symbol_rx.shape[0] == symbol_tx.shape[0]
+
+        parallelization = symbol_rx.shape[1] / self.block_length
+        estimate_phase = np.zeros((parallelization, 1))
+
+        for pol_rx, pol_tx in zip(symbol_rx, symbol_tx):
+            # cut of the last block
+            pol_rx = pol_rx[0:len(pol_rx) - self.block_length]
+            pol_tx = pol_tx[0:len(pol_tx) - self.block_length]
+
+            pol_rx = np.reshape(pol_rx,(parallelization, self.block_length))
+
+            pol_rx[0:-1:2, :] = np.fliplr(pol_rx[0:-1:2, :])
+
+            pol_tx = np.reshape(pol_tx,(self.block_length, parallelization))
+
+            pol_tx[0:-1:2, :] = np.fliplr(pol_rx[0:-1:2, :])
+
+            estimate_phase[0:-1:2, :] = np.sum(
+                pol_rx[0:-1:2, 0:2] / pol_tx[0:-1:2, 0:2] + pol_rx[1:-1:2, 0:2] / pol_rx[0:-1:2, 0:2])
+            estimate_phase = np.angle(estimate_phase)
+
+            estimate_phase[1:-1:2, :] = estimate_phase[0:-1:2, :]
+
+            estimate_phase_mat = np.tile(estimate_phase, (1, self.block_length))
+
+            pol_rx = pol_rx * np.exp(-1j * estimate_phase_mat)
+            pol_rx = self.pll(pol_rx,constl)
+
+            pol_rx[0:-1:2, :] = np.fliplr(pol_rx[0:-1:2, :])
+            pol_rx = np.reshape(pol_rx,(1,-1))
+
+            pol_rx_dec = decision(pol_rx,constl)
+            h_phase_ml = pol_rx_dec/pol_rx
+            b = np.ones((1, 2 * self.filter_N + 1))
+            h_phase_ml_filter = lfilter(b[0,:], 1, h_phase_ml)
+            h_phase_ml_filter = np.roll(h_phase_ml_filter,-self.filter_N)
+            phase_ML = np.angle(h_phase_ml_filter)
+            rx_Symbols_CPR = pol_rx* np.exp(-1j * phase_ML)
+            
+            symbol_rx.symbol = rx_Symbols_CPR
+
+            # removing pilot symbols
+
+class PLL(object):
+
+    def __init__(self, d, g):
+        self.d = d
+        self.g = g
+
+    def __call__(self, rx_signal, constl):
+
+        if isinstance(rx_signal, SignalInterface.Signal):
+            symbols = rx_signal.symbol
+        else:
+            symbols = rx_signal
+            symbols = np.atleast_2d(symbols)
+
+        error = np.zeros_like(symbols)
+        decision_symbol = np.zeros_like(symbols)
+        decision_symbol[:,0 ] = symbols[:,0]
+        phase = np.zeros_like(symbols)
+
+        cpr_symbols = np.zeros_like(symbols)
+        for i in range(symbols.shape[0]):
+            cpr_symbols[i, :] = symbols[i, :]
+
+        for i in range(self.d + 1, symbols.shape[1]):
+            decision_symbol[:, i - self.d] = decision(symbols[:, i - self.d], constl)
+            error[:, i - self.d] = np.imag(cpr_symbols[:, i - self.d] * np.conj(decision_symbol[:, i - self.d]))
+            phase[:, i - self.d + 1] = self.g * error[:, i - self.d] + phase[:, i - self.d]
+            cpr_symbols[:, i] = symbols[:, i] * np.exp(-1j * phase[:, i - self.d + 1])
+
+        return  cpr_symbols
 
 class SyncSignal(object):
     '''
@@ -261,6 +346,7 @@ class Lms_pll(object):
             hxys.append(self.hxy[0, 8])
             hyxs.append(self.hyx[0, 8])
             hyys.append(self.hyy[0, 8])
+
         if self.is_plot:
             import matplotlib
             matplotlib.use('TKAGG')
@@ -283,7 +369,7 @@ class Lms_pll(object):
         return signal_outx, signal_outy
 
 
-def rotate_nliphase(rx_signal,txsignal_signal):
+def rotate_nliphase(rx_signal, txsignal_signal):
     '''
 
     :param rx_signal: rx ndarray 1sps
@@ -292,7 +378,7 @@ def rotate_nliphase(rx_signal,txsignal_signal):
 
     inplace operation
     '''
-    if isinstance(rx_signal,np.ndarray):
+    if isinstance(rx_signal, np.ndarray):
         # at_least 是view
         # ndarray 是可变对象，rx_signal 引用了外部对象，所以是inplace
 
@@ -301,7 +387,6 @@ def rotate_nliphase(rx_signal,txsignal_signal):
         # rx_signal 重新引用自己的symbol,inplace 操作,所以是inplace
         rx_signal = rx_signal.symbol
     refer_symbol = np.atleast_2d(txsignal_signal.symbol)
-
 
     pass
     ### add code to rotate phase shift symbol

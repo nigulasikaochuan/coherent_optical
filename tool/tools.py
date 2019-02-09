@@ -24,6 +24,12 @@ except Exception as e:
     print('')
 
 
+class TimeDomainPlot(object):
+
+    def __init__(self):
+
+        pass
+
 class SpectrumAnalyzer(object):
 
     def __init__(self, window='hamming', ratio=1):
@@ -280,12 +286,24 @@ def __plot_realeye(start_index, end_index, eyenumber, sps, signal, plt_object):
         # plt_object.hold()
 
 
-def evaldelay(signal):
-    pass
 
 
 def ber2q(ber):
     pass
+
+
+
+def dbm2w(p):
+
+    p = 10**(p/10)/1000
+    return p
+
+def w2dbm(p):
+
+    pmw = p *1000
+
+    return 10*np.log10(pmw/1)
+
 
 
 def main():

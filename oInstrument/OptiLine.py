@@ -2,22 +2,25 @@
     This file contains optical instrument along the signal's propagation
 '''
 import numpy as np
-from numpy.fft import fftfreq
 from scipy.constants import h, c
+# from .. import Base
+from Base.SignalInterface import QamSignal,Signal
 
-import arrayfire as af
-
-
-class Brf:
-    pass
-
-
-
+import sys
+print(sys.path)
 
 class Edfa:
 
 
     def __init__(self, gain_db, nf, is_ase=True, mode='ConstantGain', expected_power=0):
+        '''
+
+        :param gain_db:
+        :param nf:
+        :param is_ase: 是否添加ase噪声
+        :param mode: ConstantGain or ConstantPower
+        :param expected_power: 当mode为ConstantPoower  时候，此参数有效
+        '''
 
         self.gain_db = gain_db
         self.nf = nf
@@ -26,6 +29,11 @@ class Edfa:
         self.expected_power = expected_power
 
     def one_ase(self, signal):
+        '''
+
+        :param signal:
+        :return:
+        '''
 
         lamb = (2 * max(signal.lamb) * min(signal.lamb)) / (max(signal.lamb) + min(signal.lamb))
         One_ase = (h * c / lamb) * (self.gain_lin * 10 ^ (self.nf_lin / 10) - 1) / 2
@@ -57,8 +65,36 @@ class Edfa:
 
 
 class LaserSource:
-    pass
 
+    def __init__(self,laser_power,line_width,is_phase_noise,center_frequence):
+        '''
+
+        :param laser_power: [dbm]
+        :param line_width: [hz]
+        :param is_phase_noise:[bool]
+        '''
+        self.laser_power = laser_power
+        self.line_width = line_width
+        self.is_phase_noise = is_phase_noise
+        self.center_frequence = center_frequence
+
+    @property
+    def linear_laser_power(self):
+        return (10**(self.laser_power/10))*0.001
+
+    def __call__(self,signal:Signal):
+
+        signal.signal_power = self.linear_laser_power
+        signal._normalize_power()
+        signal.data_sample_in_fiber = np.sqrt(self.linear_laser_power) * signal.data_sample_in_fiber
+        signal.lamb = Signal.freq2lamb(self.center_frequence)
+        if self.is_phase_noise:
+            initial_phase = -np.pi + 2 * np.pi * np.random.randn(1)
+            dtheta = np.sqrt(2*np.pi*1/signal.fs_in_fiber*self.line_width)*np.random.randn(1,signal.data_sample_in_fiber.shape[1])
+            dtheta[0,0] = 0
+            phase_noise = initial_phase + np.cumsum(dtheta,axis=1)
+
+            signal[:] = signal.data_sample_in_fiber * np.exp(1j*phase_noise)
 
 class IQ:
     pass
@@ -154,3 +190,22 @@ class IQ_modulator:
 
 class optFilter:
     pass
+
+if __name__ == '__main__':
+    symbol_rate = 35e9
+    mf = '16-qam'
+    signal_power = 0
+    symbol_length = 2 ** 16
+    sps = 2
+    sps_infiber = 4
+
+
+    parameter = dict(symbol_rate=symbol_rate, mf=mf, symbol_length=symbol_length, sps=sps,
+                     sps_in_fiber=sps_infiber)
+
+    signal = QamSignal(**parameter)
+    signal[:] = np.array([[1, 2, 3, 4, 5]])
+
+    laser = LaserSource(0,0.001,True,193.1e12)
+    laser(signal)
+

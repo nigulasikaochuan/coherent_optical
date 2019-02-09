@@ -8,71 +8,24 @@
 
 '''
 
-
-###
-fiber_parameter = {
-    'ssmf':{'alpha':0.2,"d":16.7,'gamma':1.3}
-}
-# frequence unit
-Ghz = 1e9
-hz = 1
-Thz = 1e12
-# distance unit
-km = 1000
-m = 1
-nm = 1e-9
-
-def reset_simulation_settings(config_file = None,**kwargs):
-    if config_file:
-        pass
-    else:
-        print('no config file, use kwargs to initializes simulation')
-        #####signal parameter##########
-        symbol_rates = kwargs['symbol_rates']
-        sps = kwargs['sps']
-        mfs = kwargs['mfs']
-        if len(mfs) ==1:
-            mfs = mfs*len(symbol_rates)
-
-        signal_powers = kwargs['signal_powers']
-        if len(signal_powers) == 1:
-            signal_powers*=len(symbol_rates)
-        #######span parameter############
-        span_lengths = kwargs['span_lengths']
-        span_kinds = kwargs['span_kinds']
-        if len(span_kinds)==1:
-            span_kinds*=len(span_lengths)
-        span_alpha = []
-        span_gamma = []
-        span_d = []
-        for span in span_kinds:
-            span_alpha.append(fiber_parameter[span]['alpha'])
-            span_gamma.append(fiber_parameter[span]['gamma'])
-            span_d.append(fiber_parameter[span]['d'])
-        ####################################
-        print('-'*50)
-        print('simulation parameters set finish')
-        print('-'*50)
-
-
-def get_sps_absolutefrequence(symbol_rates,center_frequence = 1550):
-    '''
-    :param center_frequence:中间信道的中心频率
-    :param symbol_rates: 每个信道的符号速率，列表的长度代表了信道的个数
-    :return: None
-
-    功能描述：
-        1.更新sps：根据符号速率更新sps,提供的sps不会使用，为了完整必须在配置文件中提供
-        2.合理设置每个信道的符号长度
-        3.根据中心信道的中心频率，得到每个信道的中心频率
-
-    '''
-    pass
-
-
-
-
+from Base.SignalInterface import QamSignal
+from oInstrument.OptiLine import LaserSource
+import numpy as np
 if __name__ == '__main__':
-    pass
+    symbol_rate = 35e9
+    mf = '16-qam'
+    signal_power = 0
+    symbol_length = 2 ** 16
+    sps = 2
+    sps_infiber = 4
+
+    parameter = dict(symbol_rate=symbol_rate, mf=mf, symbol_length=symbol_length, sps=sps,
+                     sps_in_fiber=sps_infiber)
+
+    signal = QamSignal(**parameter)
+    signal.data_sample_in_fiber = np.array([[1, 2, 3, 4, 5]])
+
+    laser = LaserSource(0, 0.001, True, 193.1e12)
+    laser(signal)
 
 

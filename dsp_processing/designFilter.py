@@ -73,39 +73,6 @@ class LowPassFilter(Filter):
             pass
 
 
-class RcosDesign(object):
-
-    def __init__(self, roll_off, span, sps):
-        self.roll_off = roll_off
-        self.span = span
-
-        self.sps = sps
-        self.h = self.__design(roll_off, span, sps)
-        self.delay = self.span / 2 * sps
-
-    def __design(self, roll_off, span, sps):
-        pass
-
-    def prop(self, signal):
-        from scipy.signal import fftconvolve
-        x = signal.data_sample[0, :]
-        y = signal.data_sample[1, :]
-        x = fftconvolve(x, self.h)
-        y = fftconvolve(y, self.h)
-        delay = self.span / 2 * self.sps
-        x = x[delay:len(x)]
-        y = y[delay:len(y)]
-        return x, y
-
-    def _prop(self, signal):
-        x, y = self.prop(signal)
-        signal.data_sample = np.array([x, y])
-
-    def __call__(self, signal):
-        self._prop(signal)
-        return self.h, self.delay
-
-
 class MatchedFilter(object):
 
     def __init__(self, h, delay=None):
@@ -128,6 +95,7 @@ class MatchedFilter(object):
 
     def __call__(self, signal):
         self._match_filter(signal)
+
 
 def fvtool(b, a, fs, env='heihei'):
     from scipy.signal import freqz
