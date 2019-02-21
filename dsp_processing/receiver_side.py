@@ -6,6 +6,8 @@ from scipy.signal import lfilter
 from Base import SignalInterface
 
 from qamdata.mapDemap import decision
+
+
 class DispersionCompensation(object):
     '''
         using __call__ to comp cd
@@ -15,37 +17,31 @@ class DispersionCompensation(object):
         if input is signal object,because reference is passed,the data behind it will change too. e.g. inplace
     '''
 
-    def __call__(self, signal, span, fs=None):
-        if isinstance(signal, np.ndarray):
-            assert fs is not None
-            temp = np.zeros_like(signal)
-            freq_vector = fftfreq(signal.shape[1], 1 / fs)
-            for i in range(signal.shape[0]):
-                temp[i, :] = self.__comp(freq_vector, signal, span)
-            return temp
-        else:
-            freq_vector = fftfreq(signal.data_sample.shape[1], 1 / signal.fs)
-            for i in range(signal.data_sample.shape[0]):
-                signal.data_sample[i, :] = self.__comp(freq_vector, signal.data_sample[i, :], span)
+    def __call__(self, signal, spans, fs=None):
 
-    def __comp(self, freq_vector, sample, span):
+        freq_vector = fftfreq(signal.data_sample_in_fiber.shape[1], 1 / signal.fs_in_fiber)
+        for i in range(signal.data_sample_in_fiber.shape[0]):
+            signal.data_sample_in_fiber[i, :] = self.__comp(freq_vector, signal.data_sample_in_fiber[i, :], spans)
+
+    def __comp(self, freq_vector, sample, spans):
         '''
 
         :param freq_vector: freq vecotr
         :param sample: [1,n] 2d-array
         :param span: Span object
         :return:
-
         no change input array
         '''
+
         freq_omeg = 2 * np.pi * freq_vector
         sample = np.atleast_2d(sample)
-        beta2 = -span.beta2
-        disper = (1j / 2) * beta2 * freq_omeg ** 2 * span.length
-        fourier_transform = fft(sample[0, :]) * disper
-        after_comp = ifft(fourier_transform)
+        for span in spans:
+            beta2 = -span.beta2
+            disper = (1j / 2) * beta2 * freq_omeg ** 2 * span.length
+            for pol_index in range(sample.shape[0]):
+                sample[pol_index, :] = ifft(fft(sample[pol_index, :]) * disper)
 
-        return after_comp
+        return sample
 
 
 class CMA(object):
@@ -61,7 +57,7 @@ class CoherentFrontEnd(object):
 
 class SuperScalar(object):
 
-    def __init__(self, block_length=200, D=4, g=0.15,filter_N = 20):
+    def __init__(self, block_length=200, D=4, g=0.15, filter_N=20):
         '''
 
         :param block_length:
@@ -75,7 +71,7 @@ class SuperScalar(object):
         self.pll = PLL(self.D, self.g)
         self.filter_N = filter_N
 
-    def __call__(self, rx_signal, tx_signal,constl):
+    def __call__(self, rx_signal, tx_signal, constl):
         symbol_rx = rx_signal.symbol
         symbol_tx = tx_signal.symbol
 
@@ -89,11 +85,11 @@ class SuperScalar(object):
             pol_rx = pol_rx[0:len(pol_rx) - self.block_length]
             pol_tx = pol_tx[0:len(pol_tx) - self.block_length]
 
-            pol_rx = np.reshape(pol_rx,(parallelization, self.block_length))
+            pol_rx = np.reshape(pol_rx, (parallelization, self.block_length))
 
             pol_rx[0:-1:2, :] = np.fliplr(pol_rx[0:-1:2, :])
 
-            pol_tx = np.reshape(pol_tx,(self.block_length, parallelization))
+            pol_tx = np.reshape(pol_tx, (self.block_length, parallelization))
 
             pol_tx[0:-1:2, :] = np.fliplr(pol_rx[0:-1:2, :])
 
@@ -106,22 +102,23 @@ class SuperScalar(object):
             estimate_phase_mat = np.tile(estimate_phase, (1, self.block_length))
 
             pol_rx = pol_rx * np.exp(-1j * estimate_phase_mat)
-            pol_rx = self.pll(pol_rx,constl)
+            pol_rx = self.pll(pol_rx, constl)
 
             pol_rx[0:-1:2, :] = np.fliplr(pol_rx[0:-1:2, :])
-            pol_rx = np.reshape(pol_rx,(1,-1))
+            pol_rx = np.reshape(pol_rx, (1, -1))
 
-            pol_rx_dec = decision(pol_rx,constl)
-            h_phase_ml = pol_rx_dec/pol_rx
+            pol_rx_dec = decision(pol_rx, constl)
+            h_phase_ml = pol_rx_dec / pol_rx
             b = np.ones((1, 2 * self.filter_N + 1))
-            h_phase_ml_filter = lfilter(b[0,:], 1, h_phase_ml)
-            h_phase_ml_filter = np.roll(h_phase_ml_filter,-self.filter_N)
+            h_phase_ml_filter = lfilter(b[0, :], 1, h_phase_ml)
+            h_phase_ml_filter = np.roll(h_phase_ml_filter, -self.filter_N)
             phase_ML = np.angle(h_phase_ml_filter)
-            rx_Symbols_CPR = pol_rx* np.exp(-1j * phase_ML)
-            
+            rx_Symbols_CPR = pol_rx * np.exp(-1j * phase_ML)
+
             symbol_rx.symbol = rx_Symbols_CPR
 
             # removing pilot symbols
+
 
 class PLL(object):
 
@@ -139,7 +136,7 @@ class PLL(object):
 
         error = np.zeros_like(symbols)
         decision_symbol = np.zeros_like(symbols)
-        decision_symbol[:,0 ] = symbols[:,0]
+        decision_symbol[:, 0] = symbols[:, 0]
         phase = np.zeros_like(symbols)
 
         cpr_symbols = np.zeros_like(symbols)
@@ -152,7 +149,8 @@ class PLL(object):
             phase[:, i - self.d + 1] = self.g * error[:, i - self.d] + phase[:, i - self.d]
             cpr_symbols[:, i] = symbols[:, i] * np.exp(-1j * phase[:, i - self.d + 1])
 
-        return  cpr_symbols
+        return cpr_symbols
+
 
 class SyncSignal(object):
     '''
@@ -171,17 +169,11 @@ class SyncSignal(object):
         :param sps: sps in receive, often 2
         :return:
         '''
-        if isinstance(signal, np.ndarray):
-            assert sps is not None
-            signal = np.atleast_2d(signal)
-            temp = np.zeros_like(signal)
-            for i in range(signal.shape[0]):
-                temp[i, :] = SyncSignal.syncsignal(txsignal.symbol[i, :], signal[i, :], sps)
-            return temp
-        else:
-            for i in range(signal.data_sample[0]):
-                signal.data_sample[i, :] = SyncSignal.syncsignal(txsignal.symbol[i, :], signal.data_sample[i, :],
-                                                                 signal.sps)
+
+        for i in range(signal.data_sample_in_fiber.shape[0]):
+            signal.data_sample_in_fiber[i, :] = SyncSignal.syncsignal(txsignal.symbol[i, :],
+                                                                      signal.data_sample_in_fiber[i, :],
+                                                                      signal.sps_in_fiber)
 
     @staticmethod
     def syncsignal(symbol_tx, sample_rx, sps):
@@ -195,8 +187,8 @@ class SyncSignal(object):
         # 不会改变原信号
 
         '''
-        symbol_tx = np.atleast_2d(symbol_tx)[0]
-        sample_rx = np.atleast_2d(sample_rx)[0]
+        symbol_tx = np.atleast_2d(symbol_tx)[0, :]
+        sample_rx = np.atleast_2d(sample_rx)[0, :]
 
         res = correlate(sample_rx[::sps], symbol_tx)
 
@@ -369,7 +361,7 @@ class Lms_pll(object):
         return signal_outx, signal_outy
 
 
-def rotate_nliphase(rx_signal, txsignal_signal):
+def rotate_nliphase(rx_signal, tx_signal):
     '''
 
     :param rx_signal: rx ndarray 1sps
@@ -378,18 +370,15 @@ def rotate_nliphase(rx_signal, txsignal_signal):
 
     inplace operation
     '''
-    if isinstance(rx_signal, np.ndarray):
-        # at_least 是view
-        # ndarray 是可变对象，rx_signal 引用了外部对象，所以是inplace
 
-        rx_signal = np.atleast_2d(rx_signal)
-    else:
-        # rx_signal 重新引用自己的symbol,inplace 操作,所以是inplace
-        rx_signal = rx_signal.symbol
-    refer_symbol = np.atleast_2d(txsignal_signal.symbol)
+    rx_symbol = rx_signal.symbol
+    tx_symbol = tx_signal.symbol
 
-    pass
-    ### add code to rotate phase shift symbol
+    for i in range(rx_signal.shape[0]):
+        rx_symbol = rx_symbol / np.sqrt(np.mean(np.abs(rx_symbol) ** 2))
+        tx_symbol = tx_symbol / np.sqrt(np.mean(np.abs(tx_symbol) ** 2))
+        average_phase = np.angle(np.sum(rx_symbol / tx_symbol))
+        rx_symbol = rx_symbol * np.exp(-1j * average_phase)
 
 
 def main():

@@ -99,7 +99,9 @@ class PulseShaping(object):
         :param signal_interface: signal object to be pulse shaping,because a reference of signal object is passed
         so the filter is in place
         :return: None
+
         '''
+
         print("---begin pulseshaping ---")
         # upsample by insert zeros
 

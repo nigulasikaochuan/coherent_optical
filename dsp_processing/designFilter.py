@@ -7,6 +7,8 @@ from scipy.signal import group_delay
 from scipy.signal import fftconvolve
 import numpy as np
 
+from eInstrument.ElectricInstrument import PulseShaping
+
 
 class AnotherMethodException(Exception):
     pass
@@ -27,7 +29,7 @@ class LowPassFilter(Filter):
         assert fs != 0
         self.fs = fs
 
-    def _ideal_lowpass(self, signal):
+    def inplace_ideal_lowpass(self, signal):
         '''
 
         :param signal: in place filter
@@ -43,10 +45,10 @@ class LowPassFilter(Filter):
         :param signal: the sampled sample will be returned, original sample of signal will not be changed
         :return:
         '''
-        fs = signal.fs
-        sample_x = signal.data_sample[0, :]
-        sample_y = signal.data_sample[1, :]
-        freq = fftfreq(signal.data_sample.shape[1], 1 / fs)
+        fs_in_fiber = signal.fs_in_fiber
+        sample_x = signal.data_sample_in_fiber[0, :]
+        sample_y = signal.data_sample_in_fiber[1, :]
+        freq = fftfreq(signal.data_sample.shape[1], 1 / fs_in_fiber)
 
         sample_x_fourier_transform = fft(sample_x)
         sample_y_fourier_transform = fft(sample_y)
@@ -75,26 +77,28 @@ class LowPassFilter(Filter):
 
 class MatchedFilter(object):
 
-    def __init__(self, h, delay=None):
-        if delay is None:
-            self.delay = group_delay(h)
-        self.h = h
+    def __init__(self, roll_off,span,sps):
+        self.h = PulseShaping.rcosdesign(span,roll_off,1,sps)
+        self.delay = int(span/2 * sps)
 
     def match_filter(self, signal):
-        x = signal.data_sample[0, :]
-        y = signal.data_sample[1, :]
+        x = signal.data_sample_infiber[0, :]
+        y = signal.data_sample_infiber[1, :]
         x = fftconvolve(x,self.h)
         y = fftconvolve(y,self.h)
-        x = x[self.delay:]
-        y = y[self.delay:]
+
+        x = np.roll(x,-self.delay)
+        y = np.roll(y,-self.delay)
+        x = x[:len(x)]
+        y = y[:len(y)]
         return x,y
 
-    def _match_filter(self, signal):
+    def inplace_match_filter(self, signal):
         x, y = self.match_filter(signal)
         signal.data_sample = np.array([x, y])
 
     def __call__(self, signal):
-        self._match_filter(signal)
+        self.inplace_match_filter(signal)
 
 
 def fvtool(b, a, fs, env='heihei'):

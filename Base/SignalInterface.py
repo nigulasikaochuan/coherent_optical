@@ -15,13 +15,13 @@ class Signal(object):
         '''
 
         :param kwargs: 包含单信道信号的各项参数，包括：
-            1. 符号速率 【Hz】
-            2. 调制格式
-            3. 符号长度
-            4. 符号功率  【dbm】
+            1. symbol_rate 符号速率 【Hz】
+            2. mf 调制格式
+            3. symbol length符号长度
+            4. signal_power 信号功率  【dbm】
             5. sps： 发端dsp的采样率
             6. sps_in_fiber: 光纤中采样率
-            7. lam： 信号波长，单位为国际单位m
+            7. lam： 信号波长，单位为国际单位 m
 
         所有单位全部使用国际标准单位
 
@@ -34,13 +34,15 @@ class Signal(object):
         self.symbol_length = kwargs['symbol_length']
 
         self.signal_power = None
-
+        # self.center_frequence = None # will be set in laser
         self.sps_in_fiber = kwargs['sps_in_fiber']
         self.sps = kwargs['sps']
         self.lamb = None
+
         self.data_sample = None
-        self.is_dp = True
         self.data_sample_in_fiber = None
+
+
 
     def tonumpy(self):
         '''
@@ -55,7 +57,7 @@ class Signal(object):
         '''
 
         :param index: Slice Object
-        :return: ndarray of the signal, change this ndarray will not change the object
+        :return: ndarray of the signal, change this ndarray will change the object
 
         '''
         assert self.data_sample_in_fiber is not None
@@ -96,8 +98,15 @@ class Signal(object):
 
 
     def measure_power_in_fiber(self):
+        '''
+
+        :return: signal power in the fiber, in unit [W]
+        '''
         sample_in_fiber = np.atleast_2d(self.data_sample_in_fiber)
-        signal_power = np.sum(np.mean(np.abs(sample_in_fiber) ** 2, axis=1))
+        signal_power = 0
+        for i in range(sample_in_fiber.shape[0]):
+            signal_power += np.mean(np.abs(sample_in_fiber[i,:])**2)
+
         return signal_power
 
     @property
@@ -118,7 +127,7 @@ class Signal(object):
 
 
 
-    def _normalize_power(self):
+    def inplace_normalize_power(self):
         '''
             in place operation
         :return:
@@ -133,86 +142,21 @@ class Signal(object):
         :return: ndarray and signal object will not be changed
 
         '''
-        if self.data_sample_in_fiber.shape[0] == 2:
-            x_normal = self.data_sample_in_fiber[0,:] / np.sqrt(np.mean(np.abs(self.data_sample_in_fiber[0, :]) ** 2))
-            y_normal = self.data_sample_in_fiber[1, :] / np.sqrt(np.mean(np.abs(self.data_sample_in_fiber[1, :]) ** 2))
-            return x_normal, y_normal
-        else:
-            normal_signal_sample = np.atleast_2d(self.data_sample_in_fiber)
-            normal_signal_sample = normal_signal_sample[0, :] / np.sqrt(
-                np.mean(np.abs(normal_signal_sample[0, :]) ** 2))
+        temp = np.zeros_like(self.data_sample_in_fiber)
+        for i in range(self.data_sample_in_fiber.shape[0]):
+            temp[i,:] = self.data_sample_in_fiber[i,:]/np.sqrt(np.mean(np.abs(self.data_sample_in_fiber[i,:])**2))
 
-            return np.atleast_2d(normal_signal_sample)
 
-    def from_numpy(self, **kwargs):
-        if kwargs['is_wdm']:
-            if not isinstance(kwargs['mf'], list):
-                mf = [kwargs['mf']]
-            else:
-                mf = kwargs['mf']
-            fs = kwargs['fs']
-            wdm_sample = kwargs['wdm_sample']
-            if kwargs['is_dp']:
-                sample_x = wdm_sample[0, :]
-                sample_y = wdm_sample[1, :]
-            else:
-                sample_x = wdm_sample[0, :]
-                sample_y = None
+        return temp
 
-            center_freq = kwargs['center_freq']
-            spacing = kwargs['spacing']
-            symbol_rate = kwargs['symbol_rate']
-            absolute_frequence = kwargs['absolute_frequence']
-            ch_number = kwargs['ch_number']
-
-            return WdmSignal(
-                **dict(sample_x=sample_x, sample_y=sample_y, mf=mf, spacing=spacing, center_freq=center_freq,
-                       symbol_rate=symbol_rate, absolute_frequence=absolute_frequence, ch_number=ch_number, fs=fs))
-
-        else:
-            symbol_rate = kwargs['symbol_rate']
-            mf = kwargs['mf']
-            signal_power = kwargs['signal_power']
-            symbol_length = kwargs['symbol_length']
-
-            if 'sample_x' in kwargs:
-                sps = kwargs['sps']
-
-            else:
-                sps = None
-            sps_in_fiber = kwargs['sps_in_fiber']
-
-            qamsignal = QamSignal(symbol_rate=symbol_rate, mf=mf, signal_power=signal_power,
-                                  symbol_length=symbol_length, sps=sps, sps_in_fiber=sps_in_fiber, is_from_numpy=True)
-
-            symbol_x = kwargs['symbol_x']
-            if kwargs['is_dp']:
-                symbol_y = kwargs['symbol_y']
-                qamsignal.symbol = np.array([symbol_x, symbol_y])
-            else:
-                qamsignal.symbol = np.atleast_2d(np.array(symbol_x))
-
-            if sps:
-                sample_x = kwargs['sample_x']
-                if kwargs['is_dp']:
-
-                    sample_y = kwargs['sample_y']
-
-                    sample = np.array([sample_x, sample_y])
-                    qamsignal.data_sample = sample
-                else:
-                    qamsignal.data_sample = np.atleast_2d(np.array(sample_x))
-            sample_x_in_fiber = kwargs['sample_x_in_fiber']
-            if kwargs['is_dp']:
-                sample_y_in_fiber = kwargs['sample_y_in_fiber']
-
-                qamsignal.data_sample_in_fiber = np.array([sample_x_in_fiber, sample_y_in_fiber])
-            else:
-                qamsignal.data_sample_in_fiber = np.atleast_2d(np.array(sample_x_in_fiber))
-
-            return qamsignal
 
     def upsample(self, symbol_x, sps):
+        '''
+
+        :param symbol_x: 1d array
+        :param sps: sample per symbol
+        :return: 2-d array after inserting zeroes between symbols
+        '''
         symbol_x.shape = -1, 1
         symbol_x = np.tile(symbol_x, (1, sps))
         symbol_x[:, 1:] = 0
@@ -229,35 +173,100 @@ class Signal(object):
 
         return self.__str__()
 
+class ReceiveSignal(object):
+
+    def __init__(self,symbol):
+        self.symbol = symbol
+
+class SignalFromNumpyArray(Signal):
+
+    def __init__(self,array_sample,symbol_rate,mf,symbol_length,sps_in_fiber,sps):
+        '''
+
+        :param array_sample: nd arrary
+        :param symbol_rate: GHZ
+        :param mf:
+        :param symbol_length:
+        :param sps_in_fiber:
+        :param sps:
+        '''
+        super().__init__(**dict(symbol_rate = symbol_rate,mf=mf,symbol_length = symbol_length,sps_in_fiber = sps_in_fiber,sps=sps))
+        self.data_sample_in_fiber = array_sample
+
 class WdmSignal(object):
-
-    def __init__(self, sample_x, sample_y=None, **kwargs):
+    '''
+        WdmSignal Class
+    '''
+    def __init__(self,signals,grid_size,center_frequence):
         '''
 
-        :param sample_x:
-        :param sample_y:
-        :param kwargs:
+        :param signals: list of signal
+        :param grid_size: [GHz]
         '''
-        if kwargs['is_dp']:
-            assert sample_y is not None
-            self.data_sample = np.array([sample_x, sample_y])
+        self.signals = signals
+        self.grid_size = grid_size
+        self.center_frequence = center_frequence
+    @property
+    def fs(self):
+        return self.signals[0].fs_in_fiber
+
+    @property
+    def mfs(self):
+        mfs = []
+        for sig in self.signals:
+            mfs.append(sig.mf)
+
+    @property
+    def absolute_frequences(self):
+        '''
+
+        :return:
+        '''
+        releative = self.relative_frequence
+        releative = np.array(releative)
+        return self.center_frequence + releative
+
+    @property
+    def relative_frequence(self):
+        '''
+
+        :return: frequences centered in zero frequence , a List
+        '''
+        pos_frequence = []
+
+        if divmod(len(self.signals),2)[1] == 0:
+            each_number = int(len(self.signals)/2)
+            pos_frequence_first = self.grid_size/2
+            pos_frequence.append(pos_frequence_first)
+            for i in range(0,each_number-1):
+                pos_frequence.append(pos_frequence_first + (i+1)*self.grid_size)
+
+            neg_frequence = pos_frequence[::-1]
+
+            neg_frequence = np.array(neg_frequence)*-1
+            neg_frequence = neg_frequence.tolist()
+
+            return neg_frequence+pos_frequence
+
         else:
-            self.data_sample = np.array([sample_x])
+            each_number = len(self.signals)-1
+            each_number = int(each_number/2)
 
-        self.center_freq = kwargs['center_freq']
-        self.spacing = kwargs['spacing']
-        self.mf = kwargs['mf']
-        self.symbol_rate = kwargs['symbol_rate']
+            for i in range(each_number):
+                pos_frequence.append((i+1)*self.grid_size)
+            neg_frequence = pos_frequence[::-1]
+            neg_frequence = np.array(neg_frequence)*-1
+            neg_frequence = neg_frequence.tolist()
+            neg_frequence.append(0)
+            return neg_frequence+pos_frequence
 
-        self.absolute_freq = kwargs['absolute_frequence']  # 指的是以0 为中心
-        self.ch_number = kwargs['ch_number']
-        self.fs = kwargs['fs']
+
 
 
 class QamSignal(Signal):
 
-    def __init__(self, symbol_rate, mf, symbol_length, sps, sps_in_fiber, is_dp=True,
-                 is_from_numpy=False):
+    def __init__(self, symbol_rate, mf, symbol_length, sps, sps_in_fiber,
+                 is_from_numpy=False,is_dp=True):
         '''
 
         :param symbol_rate: [hz]   符号速率
@@ -270,7 +279,7 @@ class QamSignal(Signal):
 
         super().__init__(
             **dict(symbol_length=symbol_length, symbol_rate=symbol_rate, mf=mf,  sps=sps,
-                   sps_in_fiber=sps_in_fiber, is_dp=is_dp)
+                   sps_in_fiber=sps_in_fiber)
         )
 
         if self.mf == 'qpsk':
@@ -284,7 +293,7 @@ class QamSignal(Signal):
             self.message = np.random.randint(low=0, high=order, size=(2, self.symbol_length))
         else:
             self.message = np.random.randint(low=0, high=order, size=(1, self.symbol_length))
-
+        self.is_dp = is_dp
         self.symbol = None
 
         if not is_from_numpy:
@@ -295,21 +304,13 @@ class QamSignal(Signal):
         qam_data = (f'{base_path}/' + 'qamdata/' + str(order) + 'qam.mat')
         qam_data = loadmat(qam_data)['x']
 
-        if self.is_dp:
-            symbol = np.zeros((2, self.symbol_length), dtype=np.complex)
-            for index, msg in enumerate(self.message[0, :]):
-                symbol[0, index] = qam_data[0, msg]
-                symbol[1, index] = qam_data[0, self.message[1, index]]
-            print('------symbol_map completed------')
-            self.symbol = symbol
-        else:
-            symbol = np.zeros((1, self.symbol_length), dtype=np.complex)
-            for index, msg in enumerate(self.message[0, :]):
-                symbol[0, index] = qam_data[0, msg]
+        symbol = np.zeros(self.message.shape,dtype=np.complex)
 
-            print('------symbol_map completed------')
-            self.symbol = symbol
+        for i in range(symbol.shape[0]):
+            for msg in self.message[i,:]:
+                symbol[i,self.message == msg] = qam_data[0,msg]
 
+        self.symbol = symbol
 
 def main():
     # symbol_rate, mf, signal_power, symbol_length, sps, sps_infiber
