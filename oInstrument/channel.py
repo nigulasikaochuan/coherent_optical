@@ -1,9 +1,16 @@
+import sys
+
+sys.path.append('../')
 from numpy.fft import fftfreq
 from scipy.fftpack import fft, ifft
-
+from cupy.fft import fft as cfft
+from cupy.fft import ifft as icfft
 from Base import SignalInterface
 import numpy as np
 from scipy.constants import c
+
+import cupy as cp
+import math
 
 
 class Awgn(object):
@@ -63,6 +70,10 @@ class LinearFiber(object):
         self.wave_length = wave_length
 
     @property
+    def alpha_lin(self):
+        return np.log(10 ** (self.alpha / 10))
+
+    @property
     def beta2(self):
         return -self.D * (self.wave_length * 1e-12) ** 2 / 2 / np.pi / c / 1e-3
 
@@ -97,38 +108,125 @@ class NonlinearFiber(LinearFiber):
 
     @property
     def step_length_eff(self):
-        return (1 - np.exp(-self.alpha * self.step_length)) / self.alpha
+        return (1 - np.exp(-self.alpha_lin * self.step_length)) / self.alpha_lin
 
-    def prop(self, signal):
-        if signal.ndim != 2:
+    def cupy_prop(self, signal):
+
+        flag = False
+
+        steps = self.length / self.step_length
+        steps = np.floor(steps)
+        steps = int(steps)
+        if steps * self.step_length < self.length:
+            last_step = self.length - steps * self.step_length
+            flag = True
+
+        xpol = cp.asarray(signal.data_sample[0, :], dtype=cp.complex)
+        ypol = cp.asarray(signal.data_sample[1, :], dtype=cp.complex)
+
+        freq = fftfreq(len(xpol), 1 / signal.fs)
+        freq = cp.asarray(freq)
+        omeg = 2 * np.pi * freq
+
+        linear_operator = 1j / 2 * self.beta2 * omeg ** 2
+
+        nonlinear_operator = self.gamma * self.step_length_eff * 8 / 9 * 1j
+
+        for i in range(steps):
+            print(i)
+
+            xpol_fft = cfft(xpol)
+            xpol_fft = xpol_fft * cp.exp(linear_operator * self.step_length / 2)
+
+            ypol_fft = cfft(ypol)
+            ypol_fft = ypol_fft * cp.exp(linear_operator * self.step_length / 2)
+
+            xpol = icfft(xpol_fft)
+            ypol = icfft(ypol_fft)
+
+            xpol = xpol * cp.exp(-nonlinear_operator * (cp.abs(xpol) ** 2 + cp.abs(ypol) ** 2))
+            ypol = xpol * cp.exp(-nonlinear_operator * (cp.abs(xpol) ** 2 + cp.abs(ypol) ** 2))
+
+            xpol = xpol * cp.exp(- self.alpha_lin * self.step_length / 2)
+            ypol = ypol * cp.exp(- self.alpha_lin * self.step_length / 2)
+
+            xpol_fft = cfft(xpol)
+            xpol_fft = xpol_fft * cp.exp(linear_operator * self.step_length / 2)
+
+            ypol_fft = cfft(ypol)
+            ypol_fft = ypol_fft * cp.exp(linear_operator * self.step_length / 2)
+
+            xpol = icfft(xpol_fft)
+            ypol = icfft(ypol_fft)
+
+        if flag:
+            step_size_eff = 1 - cp.exp(-last_step * self.alpha_lin)
+            step_size_eff = step_size_eff / self.alpha_lin
+            nonlinear_operator = self.gamma * step_size_eff * 8 / 9 * 1j
+            xpol_fft = cfft(xpol)
+            xpol_fft = xpol_fft * cp.exp(linear_operator * last_step / 2)
+
+            ypol_fft = cfft(ypol)
+            ypol_fft = ypol_fft * cp.exp(linear_operator * last_step / 2)
+
+            xpol = icfft(xpol_fft)
+            ypol = icfft(ypol_fft)
+
+            xpol = xpol * cp.exp(nonlinear_operator * (cp.abs(xpol) ** 2 + cp.abs(ypol) ** 2))
+            ypol = xpol * cp.exp(nonlinear_operator * (cp.abs(xpol) ** 2 + cp.abs(ypol) ** 2))
+            xpol = xpol * cp.exp(- self.alpha_lin * last_step / 2)
+            ypol = ypol * cp.exp(- self.alpha_lin * last_step / 2)
+
+            xpol_fft = cfft(xpol)
+            xpol_fft = xpol_fft * np.exp(linear_operator) * last_step / 2
+
+            ypol_fft = cfft(ypol)
+            ypol_fft = ypol_fft * np.exp(linear_operator) * last_step / 2
+
+            xpol = icfft(xpol_fft)
+            ypol = icfft(ypol_fft)
+
+        xpol_numpy = cp.asnumpy(xpol)
+        ypol_numpy = cp.asnumpy(ypol)
+
+        return np.array([xpol_numpy, ypol_numpy])
+
+    def arrayfire_prop(self, signal):
+        print('arrayfire is used')
+        if signal.data_sample.ndim != 2:
             raise Exception("only dp signal supported at this time")
-        step_number = self.length // self.step_length
-
+        step_number = self.length / self.step_length
+        step_number = int(np.floor(step_number))
         temp = np.zeros_like(signal.data_sample)
         freq = fftfreq(signal.data_sample.shape[1], 1 / signal.fs)
         freq_gpu = af.np_to_af_array(freq)
-
-        D = 1j * self.beta2 / 2 * 2 * np.pi * freq_gpu ** 2
+        omeg = 2 * np.pi * freq_gpu
+        D = 1j / 2 * self.beta2 * omeg ** 2
         N = 8 / 9 * 1j * self.gamma
-        atten = -self.alpha / 2
+        atten = -self.alpha_lin / 2
 
         time_x = af.np_to_af_array(signal.data_sample[0, :])
         time_y = af.np_to_af_array(signal.data_sample[1, :])
 
         print('*' * 20 + "begin simulation" + '*' * 20)
         for i in range(step_number):
+            print(i)
             fftx = af.fft(time_x)
             ffty = af.fft(time_y)
 
-            time_x = af.ifft(fftx * D * self.step_length / 2) * af.exp(atten) * af.exp(
-                N * (af.abs(time_x[1, :]) ** 2 + af.abs(time_y[0, :]) ** 2)) * self.step_length_eff
-            time_y = af.ifft(ffty * D * self.step_length / 2) * af.exp(atten) * af.exp(
-                N * (af.abs(time_x[1, :]) ** 2 + af.abs(time_y[0, :]) ** 2)) * self.step_length_eff
+            time_x = af.ifft(fftx * af.exp(D * self.step_length / 2))
+            time_y = af.ifft(ffty * af.exp(D * self.step_length / 2))
+            time_x = time_x * af.exp(
+                N * self.step_length_eff * (af.abs(time_x) ** 2 + af.abs(time_y) ** 2))
+            time_y = time_y * af.exp(
+                N * self.step_length_eff * (af.abs(time_x) ** 2 + af.abs(time_y) ** 2))
 
+            time_x = time_x * math.exp(atten * self.step_length)
+            time_y = time_y * math.exp(atten * self.step_length)
             fftx = af.fft(time_x)
             ffty = af.fft(time_y)
-            time_y = af.ifft(ffty * D * self.step_length / 2)
-            time_x = af.ifft(fftx * D * self.step_length / 2)
+            time_y = af.ifft(ffty * af.exp(D * self.step_length / 2))
+            time_x = af.ifft(fftx * af.exp(D * self.step_length / 2))
 
         print('*' * 20 + "end simulation" + '*' * 20)
 
@@ -142,10 +240,15 @@ class NonlinearFiber(LinearFiber):
         fftx = af.fft(time_x)
         ffty = af.fft(time_y)
 
-        time_x = af.ifft(fftx * D * last_step / 2) * af.exp(atten) * af.exp(
-            N * (af.abs(time_x[1, :]) ** 2 + af.abs(time_y[0, :]) ** 2)) * last_step_eff
-        time_y = af.ifft(ffty * D * last_step / 2) * af.exp(atten) * af.exp(
-            N * (af.abs(time_x[1, :]) ** 2 + af.abs(time_y[0, :]) ** 2)) * last_step_eff
+        time_x = af.ifft(fftx * af.exp(D * last_step / 2))
+        time_y = af.ifft(ffty * af.exp(D * last_step / 2))
+        time_x = time_x * af.exp(
+            N * last_step_eff * (af.abs(time_x) ** 2 + af.abs(time_y) ** 2))
+        time_y = time_y * af.exp(
+            N * last_step_eff * (af.abs(time_x) ** 2 + af.abs(time_y) ** 2))
+
+        time_x = math.exp(atten * self.step_length) * time_x
+        time_y = math.exp(atten * self.step_length) * time_y
 
         fftx = af.fft(time_x)
         ffty = af.fft(time_y)
@@ -156,7 +259,7 @@ class NonlinearFiber(LinearFiber):
         return temp
 
     def inplace_prop(self, signal):
-        after_prop = self.prop(signal)
+        after_prop = self.arrayfire_prop(signal)
         signal.data_sample = after_prop
 
     @property
@@ -165,3 +268,26 @@ class NonlinearFiber(LinearFiber):
 
     def __call__(self, signal):
         self.inplace_prop(signal)
+
+
+if __name__ == "__main__":
+    from scipy.io import loadmat
+    from tool import qualitymeter
+    import time
+
+    samples = loadmat(r'C:\Users\lun\Desktop\coherent_optical-master\oInstrument\matlab.mat')['sample']
+    span = NonlinearFiber(alpha=0.22, D=16.89, gamma=1.3, length=80, step_length=10e-3)
+
+
+    class Signal(object):
+        pass
+
+
+    signal = Signal()
+    signal.fs = 2.736000000000000e+11
+    signal.data_sample = samples
+    qualitymeter.Powermeter.measure(signal.data_sample)
+    now = time.time()
+    span(signal)
+    print(time.time() - now)
+    qualitymeter.Powermeter.measure(signal.data_sample)
