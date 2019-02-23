@@ -288,7 +288,7 @@ class QamSignal(Signal):
             order = self.mf.split('-')[0]
             order = int(order)
 
-        if self.is_dp:
+        if is_dp:
 
             self.message = np.random.randint(low=0, high=order, size=(2, self.symbol_length))
         else:
@@ -307,8 +307,8 @@ class QamSignal(Signal):
         symbol = np.zeros(self.message.shape,dtype=np.complex)
 
         for i in range(symbol.shape[0]):
-            for msg in self.message[i,:]:
-                symbol[i,self.message == msg] = qam_data[0,msg]
+            for msg in np.unique(self.message[i,:]):
+                symbol[i,self.message[i,:] == msg] = qam_data[0,msg]
 
         self.symbol = symbol
 
@@ -322,7 +322,7 @@ def main():
     sps_infiber = 4
 
     parameter = dict(symbol_rate=symbol_rate, mf=mf,  symbol_length=symbol_length, sps=sps,
-                     sps_in_fiber=sps_infiber)
+                     sps_in_fiber=sps_infiber,is_dp = False)
 
     signal = QamSignal(**parameter)
     signal[:] = np.array([1,2,3,4,5])
