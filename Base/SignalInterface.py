@@ -312,6 +312,9 @@ class QamSignal(Signal):
 
         self.symbol = symbol
 
+        self.data_sample = np.zeros((symbol.shape[0],symbol.shape[1]*self.sps),dtype=np.complex)
+        self.data_sample_in_fiber = np.zeros((symbol.shape[0],symbol.shape[1]*self.sps_in_fiber),dtype=np.complex)
+
 def main():
     # symbol_rate, mf, signal_power, symbol_length, sps, sps_infiber
     symbol_rate = 35e9

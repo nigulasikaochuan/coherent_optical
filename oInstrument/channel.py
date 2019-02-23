@@ -3,13 +3,17 @@ import sys
 sys.path.append('../')
 from numpy.fft import fftfreq
 from scipy.fftpack import fft, ifft
-from cupy.fft import fft as cfft
-from cupy.fft import ifft as icfft
+try:
+    import cupy as cp
+    from cupy.fft import fft as cfft
+    from cupy.fft import ifft as icfft
+except Exception as e:
+    print('cupy can not be used')
+
 from Base import SignalInterface
 import numpy as np
 from scipy.constants import c
 
-import cupy as cp
 import math
 
 

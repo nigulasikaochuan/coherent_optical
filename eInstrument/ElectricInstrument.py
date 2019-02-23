@@ -105,17 +105,15 @@ class PulseShaping(object):
         print("---begin pulseshaping ---")
         # upsample by insert zeros
 
-        for i in range(signal_interface.data_sample_in_fiber.shape[0]):
 
-            signal_interface.data_sample[i, :] = signal_interface.upsample(signal_interface.symbol[i, :],
-                                                                       signal_interface.sps)[i, :]
 
-        # signal_interface.data_sample[1, :] = signal_interface.upsample(signal_interface.symbol[1, :],
-        #                                                                signal_interface.sps)[1, :]
-        # upsample finish
-        # rrc filter
+        for i in range(signal_interface.data_sample.shape[0]):
+
+            signal_interface.data_sample[i, :] = signal_interface.upsample(signal_interface.symbol[i, :],signal_interface.sps)[0, :]
+
+
         temp =[]
-        for i in range(signal_interface.data_sample_in_fiber.shape[0]):
+        for i in range(signal_interface.data_sample.shape[0]):
             temp.append(convolve(self.filter_tap[0, :], signal_interface.data_sample[i, :]))
 
         # tempy = convolve(self.filter_tap[0, :], signal_interface.data_sample[1, :])
